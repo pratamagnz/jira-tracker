@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Jira Tracker,</title>
+<title>Jira Tracker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -95,15 +95,10 @@
   .state-msg.error { color: var(--status-stale); }
   .retry-btn { margin-top: 10px; padding: 6px 16px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-family: inherit; font-size: 12.5px; font-weight: 500; }
   .retry-btn:hover { background: var(--surface-sunken); }
-  .designer-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; margin-bottom: 20px; }
-  .designer-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; cursor: pointer; text-align: left; font-family: inherit; color: var(--text); }
-  .designer-card:hover { background: var(--surface-sunken); }
-  .designer-card.selected { border-color: var(--status-progress); background: var(--surface-sunken); }
-  .designer-card .d-name { font-size: 13.5px; font-weight: 600; margin: 0 0 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .designer-card .d-stats { display: flex; gap: 14px; }
-  .designer-card .d-stat-num { font-family: var(--font-mono); font-size: 18px; font-weight: 600; margin: 0; }
-  .designer-card .d-stat-label { font-size: 10px; color: var(--text-muted); margin: 2px 0 0; }
-  .designer-card .d-stat-num.stale { color: var(--status-stale); }
+  .designer-link { color: var(--status-progress); cursor: pointer; font-weight: 500; }
+  .designer-link:hover { text-decoration: underline; }
+  .back-link { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--text-secondary); cursor: pointer; margin-bottom: 14px; }
+  .back-link:hover { color: var(--text); }
   @media (max-width: 880px) {
     body { flex-direction: column; }
     .sidebar { width: 100%; flex-direction: row; align-items: center; padding: 12px 16px; }
@@ -170,9 +165,35 @@
   <section class="view" id="view-designer">
     <div class="topbar">
       <div><h1 class="page-title">Designer</h1><p class="page-sub">Workload breakdown per designer</p></div>
+      <div class="sync-note" id="designerListCount"></div>
     </div>
-    <div class="designer-cards" id="designerCards"></div>
-    <div id="designerDetail"></div>
+    <div class="log-table-wrap">
+      <table>
+        <thead><tr><th>Designer</th><th class="num">Active</th><th class="num">Done</th><th class="num">Stale</th></tr></thead>
+        <tbody id="designerListBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="view" id="view-designer-detail">
+    <div class="back-link" id="backToDashboard">&larr; Back to Dashboard</div>
+    <div class="topbar">
+      <div><h1 class="page-title" id="designerDetailName">Designer</h1><p class="page-sub">All active and completed tickets assigned to this designer</p></div>
+      <div class="sync-note" id="designerDetailCount"></div>
+    </div>
+    <div class="toolbar" id="designerDetailFilterBar">
+      <button class="filter-chip active" data-filter="all">All</button>
+      <button class="filter-chip" data-filter="To Do">To Do</button>
+      <button class="filter-chip" data-filter="In Progress">In Progress</button>
+      <button class="filter-chip" data-filter="User Testing">User Testing</button>
+      <button class="filter-chip" data-filter="Done">Done</button>
+    </div>
+    <div class="log-table-wrap">
+      <table>
+        <thead><tr><th>Key</th><th>Name</th><th>Status</th><th>Label</th><th class="num" title="Days since the ticket was created">Days Active</th><th>Flag</th></tr></thead>
+        <tbody id="designerDetailBody"></tbody>
+      </table>
+    </div>
   </section>
 
 </main>
@@ -238,7 +259,7 @@ async function loadData() {
 
   renderDashboard();
   renderLog("all");
-  renderDesignerCards();
+  renderDesignerList();
 }
 
 function renderDashboard() {
@@ -256,7 +277,7 @@ function renderDashboard() {
   active.forEach((t) => { designerMap[t.assignee] = (designerMap[t.assignee] || 0) + 1; });
   const designerRows = Object.entries(designerMap)
     .sort((a, b) => b[1] - a[1])
-    .map(([name, n]) => `<tr><td>${esc(name)}</td><td class="num">${n}</td></tr>`)
+    .map(([name, n]) => `<tr><td><span class="designer-link" data-designer="${esc(name)}">${esc(name)}</span></td><td class="num">${n}</td></tr>`)
     .join("") || '<tr class="muted-row"><td colspan="2">No data yet</td></tr>';
 
   // fokus per clan
@@ -350,9 +371,15 @@ function renderDashboard() {
   }
 }
 
-let selectedDesigner = null;
+function pillClass(status) {
+  if (status === "To Do") return "todo";
+  if (status === "In Progress") return "progress";
+  if (status === "User Testing") return "testing";
+  return "done";
+}
 
-function renderDesignerCards() {
+// ---------------- Designer list (table of names) ----------------
+function renderDesignerList() {
   const stats = {};
   TICKETS.forEach((t) => {
     const name = t.assignee;
@@ -365,60 +392,67 @@ function renderDesignerCards() {
   });
 
   const names = Object.keys(stats).sort((a, b) => stats[b].active - stats[a].active);
-  if (!selectedDesigner || !stats[selectedDesigner]) selectedDesigner = names[0] || null;
-
-  const container = document.getElementById("designerCards");
-  container.innerHTML = names.map((name) => `
-    <button class="designer-card ${name === selectedDesigner ? "selected" : ""}" data-designer="${esc(name)}" type="button">
-      <p class="d-name">${esc(name)}</p>
-      <div class="d-stats">
-        <div><p class="d-stat-num">${stats[name].active}</p><p class="d-stat-label">Active</p></div>
-        <div><p class="d-stat-num">${stats[name].done}</p><p class="d-stat-label">Done</p></div>
-        <div><p class="d-stat-num stale">${stats[name].stale}</p><p class="d-stat-label">Stale</p></div>
-      </div>
-    </button>
-  `).join("") || '<div class="state-msg">No assignee data yet</div>';
-
-  container.querySelectorAll(".designer-card").forEach((card) => {
-    card.addEventListener("click", () => {
-      selectedDesigner = card.dataset.designer;
-      renderDesignerCards();
-    });
-  });
-
-  renderDesignerDetail();
+  document.getElementById("designerListCount").textContent = names.length + " designers";
+  document.getElementById("designerListBody").innerHTML = names.map((name) => `
+    <tr>
+      <td><span class="designer-link" data-designer="${esc(name)}">${esc(name)}</span></td>
+      <td class="num">${stats[name].active}</td>
+      <td class="num">${stats[name].done}</td>
+      <td class="num">${stats[name].stale || "—"}</td>
+    </tr>
+  `).join("") || '<tr class="muted-row"><td colspan="4">No assignee data yet</td></tr>';
 }
 
-function renderDesignerDetail() {
-  const el = document.getElementById("designerDetail");
-  if (!selectedDesigner) { el.innerHTML = ""; return; }
-  const rows = TICKETS.filter((t) => t.assignee === selectedDesigner).sort((a, b) => (b.days ?? 0) - (a.days ?? 0));
-  el.innerHTML = `
-    <div class="panel">
-      <div class="panel-title">${esc(selectedDesigner)}'s tickets</div>
-      <table>
-        <tr><th>Key</th><th>Name</th><th>Status</th><th>Label</th><th class="num" title="Days since the ticket was created">Days Active</th><th>Flag</th></tr>
-        ${rows.map((t) => `
-          <tr>
-            <td><a class="ticket-key jira-link" href="${esc(t.jiraUrl)}" target="_blank" rel="noopener">${esc(t.key)}</a></td>
-            <td><a class="jira-link" href="${esc(t.jiraUrl)}" target="_blank" rel="noopener">${esc(t.name)}</a></td>
-            <td><span class="pill ${pillClass(t.status)}">${esc(t.status)}</span></td>
-            <td>${t.label ? `<span class="label-tag">${esc(t.label)}</span>` : "—"}</td>
-            <td class="num">${t.days != null ? t.days + "d" : "—"}</td>
-            <td class="flag-cell ${(t.flag || "").includes("Mandek") ? "flag-stale" : ""}">${esc(t.flag)}</td>
-          </tr>
-        `).join("") || '<tr class="muted-row"><td colspan="6">No tickets</td></tr>'}
-      </table>
-    </div>
-  `;
+// ---------------- Designer detail (drill-down, reached by clicking a name) ----------------
+let currentDesignerName = null;
+
+function renderDesignerDetail(name, filter) {
+  filter = filter || "all";
+  currentDesignerName = name;
+  document.getElementById("designerDetailName").textContent = name;
+  let rows = TICKETS.filter((t) => t.assignee === name);
+  if (filter !== "all") rows = rows.filter((t) => t.status === filter);
+  rows = rows.slice().sort((a, b) => (b.days ?? 0) - (a.days ?? 0));
+  document.getElementById("designerDetailCount").textContent = rows.length + " tickets";
+
+  document.getElementById("designerDetailBody").innerHTML = rows.map((t) => `
+    <tr>
+      <td><a class="ticket-key jira-link" href="${esc(t.jiraUrl)}" target="_blank" rel="noopener">${esc(t.key)}</a></td>
+      <td><a class="jira-link" href="${esc(t.jiraUrl)}" target="_blank" rel="noopener">${esc(t.name)}</a></td>
+      <td><span class="pill ${pillClass(t.status)}">${esc(t.status)}</span></td>
+      <td>${t.label ? `<span class="label-tag">${esc(t.label)}</span>` : "—"}</td>
+      <td class="num">${t.days != null ? t.days + "d" : "—"}</td>
+      <td class="flag-cell ${(t.flag || "").includes("Mandek") ? "flag-stale" : ""}">${esc(t.flag)}</td>
+    </tr>
+  `).join("") || '<tr class="muted-row"><td colspan="6">No tickets for this designer</td></tr>';
 }
 
-function pillClass(status) {
-  if (status === "To Do") return "todo";
-  if (status === "In Progress") return "progress";
-  if (status === "User Testing") return "testing";
-  return "done";
-}
+document.getElementById("designerDetailFilterBar").addEventListener("click", (e) => {
+  const btn = e.target.closest(".filter-chip");
+  if (!btn) return;
+  document.querySelectorAll("#designerDetailFilterBar .filter-chip").forEach((c) => c.classList.remove("active"));
+  btn.classList.add("active");
+  renderDesignerDetail(currentDesignerName, btn.dataset.filter);
+});
+
+// Clicking any designer name (list page or the Dashboard's Load-per-designer panel) drills into the detail view
+document.addEventListener("click", (e) => {
+  const link = e.target.closest(".designer-link");
+  if (!link) return;
+  document.querySelectorAll("#designerDetailFilterBar .filter-chip").forEach((c) => c.classList.remove("active"));
+  document.querySelector('#designerDetailFilterBar .filter-chip[data-filter="all"]').classList.add("active");
+  renderDesignerDetail(link.dataset.designer, "all");
+  document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
+  document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
+  document.getElementById("view-designer-detail").classList.add("active");
+});
+
+document.getElementById("backToDashboard").addEventListener("click", () => {
+  document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
+  document.querySelector('.nav-item[data-view="dashboard"]').classList.add("active");
+  document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
+  document.getElementById("view-dashboard").classList.add("active");
+});
 
 function renderLog(filter) {
   const tbody = document.getElementById("logTableBody");
