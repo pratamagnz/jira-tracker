@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Jira Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #14171E;
+    --surface: #1B1F28;
+    --surface-sunken: #21252F;
+    --border: #2C313D;
+    --text: #EDEEF1;
+    --text-secondary: #9AA1AC;
+    --text-muted: #6B7280;
+    --sidebar-bg: #0E1015;
+    --sidebar-text: #C7CBD4;
+    --sidebar-text-active: #FFFFFF;
+    --sidebar-active-bg: #1B1F28;
+    --status-todo: #94A3B8;
+    --status-progress: #2F6FED;
+    --status-testing: #7C5CFC;
+    --status-done: #16A34A;
+    --status-stale: #DC2626;
+    --status-stale-bg: #3A1C1C;
+    --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font-ui); background: var(--bg); color: var(--text); display: flex; min-height: 100vh; }
+  .sidebar { width: 216px; flex-shrink: 0; background: var(--sidebar-bg); color: var(--sidebar-text); display: flex; flex-direction: column; padding: 20px 12px; padding-top: calc(20px + env(safe-area-inset-top, 0px)); }
+  .brand { display: flex; align-items: center; gap: 9px; padding: 0 8px; margin-bottom: 28px; }
+  .brand-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--status-progress); flex-shrink: 0; }
+  .brand-name { font-size: 14px; font-weight: 600; color: var(--sidebar-text-active); letter-spacing: -0.01em; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 7px; font-size: 13.5px; font-weight: 500; cursor: pointer; color: var(--sidebar-text); user-select: none; transition: background 0.12s ease; }
+  .nav-item:hover { background: rgba(255,255,255,0.04); }
+  .nav-item.active { background: var(--sidebar-active-bg); color: var(--sidebar-text-active); }
+  .nav-icon { width: 16px; height: 16px; opacity: 0.85; flex-shrink: 0; }
+  .sidebar-footer { margin-top: auto; padding: 10px 8px 0; border-top: 1px solid rgba(255,255,255,0.08); font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+  .main { flex: 1; min-width: 0; padding: 28px 32px 60px; padding-top: calc(28px + env(safe-area-inset-top, 0px)); }
+  .topbar { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 8px; }
+  .page-title { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+  .page-sub { font-size: 12.5px; color: var(--text-secondary); margin-top: 3px; }
+  .sync-note { font-size: 12px; color: var(--text-muted); }
+  .view { display: none; } .view.active { display: block; }
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .kpi-card { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent, var(--status-progress)); border-radius: 8px; padding: 13px 15px; }
+  .kpi-label { font-size: 11.5px; color: var(--text-secondary); margin: 0 0 6px; }
+  .kpi-value { font-family: var(--font-mono); font-size: 25px; font-weight: 600; margin: 0; font-variant-numeric: tabular-nums; }
+  .tri-row { display: grid; grid-template-columns: 1fr 1fr 1.35fr; gap: 12px; margin-bottom: 20px; }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .panel-title { font-size: 12.5px; font-weight: 600; padding: 11px 14px; border-bottom: 1px solid var(--border); }
+  .panel-title.danger { color: var(--status-stale); }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  td, th { padding: 7px 14px; text-align: left; }
+  th { font-size: 10.5px; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+  tbody tr:not(:last-child) td { border-bottom: 1px solid var(--border); }
+  .num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; }
+  .muted-row td { color: var(--text-muted); font-style: italic; }
+  .stale-panel table { font-size: 12px; }
+  .stale-panel tbody tr td { background: var(--status-stale-bg); }
+  .ticket-key { font-family: var(--font-mono); font-weight: 600; font-size: 12px; }
+  a.ticket-key, a.jira-link { color: var(--text); text-decoration: none; }
+  a.ticket-key:hover, a.jira-link:hover { color: var(--status-progress); text-decoration: underline; }
+  .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 500; padding: 2px 8px 2px 6px; border-radius: 20px; white-space: nowrap; }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .pill.todo { color: var(--status-todo); background: color-mix(in srgb, var(--status-todo) 14%, transparent); }
+  .pill.progress { color: var(--status-progress); background: color-mix(in srgb, var(--status-progress) 14%, transparent); }
+  .pill.testing { color: var(--status-testing); background: color-mix(in srgb, var(--status-testing) 14%, transparent); }
+  .pill.done { color: var(--status-done); background: color-mix(in srgb, var(--status-done) 14%, transparent); }
+  .chart-row { display: grid; grid-template-columns: 0.8fr 1.2fr; gap: 12px; margin-bottom: 20px; }
+  .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .chart-card canvas { max-height: 210px; }
+  .stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .filter-chip { font-size: 12px; font-weight: 500; padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); cursor: pointer; }
+  .filter-chip.active { background: var(--text); color: var(--surface); border-color: var(--text); }
+  .log-table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow-x: auto; }
+  .log-table-wrap table { min-width: 760px; }
+  .log-table-wrap th { padding: 10px 14px; }
+  .flag-cell { font-size: 12px; }
+  .flag-stale { color: var(--status-stale); font-weight: 600; }
+  .label-tag { font-size: 11px; color: var(--text-secondary); background: var(--surface-sunken); padding: 2px 7px; border-radius: 5px; }
+  .footer-link { color: inherit; text-decoration: none; }
+  .footer-link:hover { color: var(--sidebar-text-active); text-decoration: underline; }
+  .state-msg { padding: 40px; text-align: center; color: var(--text-secondary); font-size: 13px; }
+  .state-msg.error { color: var(--status-stale); }
+  .retry-btn { margin-top: 10px; padding: 6px 16px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-family: inherit; font-size: 12.5px; font-weight: 500; }
+  .retry-btn:hover { background: var(--surface-sunken); }
+  .designer-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .designer-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; cursor: pointer; text-align: left; font-family: inherit; color: var(--text); }
+  .designer-card:hover { background: var(--surface-sunken); }
+  .designer-card.selected { border-color: var(--status-progress); background: var(--surface-sunken); }
+  .designer-card .d-name { font-size: 13.5px; font-weight: 600; margin: 0 0 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .designer-card .d-stats { display: flex; gap: 14px; }
+  .designer-card .d-stat-num { font-family: var(--font-mono); font-size: 18px; font-weight: 600; margin: 0; }
+  .designer-card .d-stat-label { font-size: 10px; color: var(--text-muted); margin: 2px 0 0; }
+  .designer-card .d-stat-num.stale { color: var(--status-stale); }
+  @media (max-width: 880px) {
+    body { flex-direction: column; }
+    .sidebar { width: 100%; flex-direction: row; align-items: center; padding: 12px 16px; }
+    .brand { margin-bottom: 0; }
+    .nav-item { padding: 7px 10px; }
+    .sidebar-footer { display: none; }
+    .main { padding: 20px 16px 40px; }
+    .kpi-row { grid-template-columns: 1fr 1fr; }
+    .tri-row, .chart-row, .stat-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="brand"><span class="brand-dot"></span><span class="brand-name">Jira Tracker</span></div>
+  <div class="nav-item active" data-view="dashboard">
+    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+    Dashboard
+  </div>
+  <div class="nav-item" data-view="storylog">
+    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+    Story Log
+  </div>
+  <div class="nav-item" data-view="designer">
+    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1c0-3.3 3.6-6 8-6s8 2.7 8 6v1"/></svg>
+    Designer
+  </div>
+  <div class="sidebar-footer">Source: <a class="footer-link" href="https://aldisworkspace-32318154.atlassian.net/browse/KAN" target="_blank" rel="noopener">Jira project KAN</a></div>
+</nav>
+
+<main class="main">
+
+  <section class="view active" id="view-dashboard">
+    <div class="topbar">
+      <div><h1 class="page-title">Dashboard</h1><p class="page-sub">Design team workload summary</p></div>
+      <div class="sync-note" id="lastSynced">Memuat…</div>
+    </div>
+    <div id="dashboardBody">
+      <div class="state-msg" id="loadingMsg">Fetching data from Supabase…</div>
+    </div>
+  </section>
+
+  <section class="view" id="view-storylog">
+    <div class="topbar">
+      <div><h1 class="page-title">Story Log</h1><p class="page-sub">All active and completed tickets from project KAN</p></div>
+      <div class="sync-note" id="ticketCount"></div>
+    </div>
+    <div class="toolbar" id="filterBar">
+      <button class="filter-chip active" data-filter="all">All</button>
+      <button class="filter-chip" data-filter="To Do">To Do</button>
+      <button class="filter-chip" data-filter="In Progress">In Progress</button>
+      <button class="filter-chip" data-filter="User Testing">User Testing</button>
+      <button class="filter-chip" data-filter="Done">Done</button>
+    </div>
+    <div class="log-table-wrap">
+      <table>
+        <thead><tr><th>Key</th><th>Name</th><th>Assignee</th><th>Status</th><th>Label</th><th class="num" title="Days since the ticket was created">Days Active</th><th>Flag</th></tr></thead>
+        <tbody id="logTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="view" id="view-designer">
+    <div class="topbar">
+      <div><h1 class="page-title">Designer</h1><p class="page-sub">Workload breakdown per designer</p></div>
+    </div>
+    <div class="designer-cards" id="designerCards"></div>
+    <div id="designerDetail"></div>
+  </section>
+
+</main>
+
+<script>
+// =====================================================================
+// Konfigurasi Supabase — anon/publishable key ini memang aman ditaruh
+// di halaman publik: akses baca/tulis dikontrol lewat Row Level
+// Security policy di sisi database, bukan lewat kerahasiaan key ini.
+// =====================================================================
+const SUPABASE_URL = "https://zygtckvmoevrxycufdwx.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5Z3Rja3Ztb2V2cnh5Y3VmZHd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk5MTU2NTQsImV4cCI6MjEwNTQ5MTY1NH0.R4CJOsM6vQR4UcfAtRSp_4t3KZ6EVuQOLBxRl_7VUOY";
+const JIRA_BASE = "https://aldisworkspace-32318154.atlassian.net/browse/";
+
+const CLAN_NAMES = {
+  "cash-management": "Cash Management",
+  "onboarding": "Onboarding",
+  "money-management": "Money Management",
+  "digital-lending": "Digital Lending",
+  "ds-team": "Design System",
+};
+
+const esc = (s) => String(s ?? "")
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
+function fmtDate(d) {
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}, ${hh}:${mm}`;
+}
+
+let TICKETS = [];
+
+async function loadData() {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/tickets?select=*`, {
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+  });
+  if (!res.ok) throw new Error(`Supabase merespons ${res.status}`);
+  const rows = await res.json();
+
+  TICKETS = rows.map((r) => ({
+    key: r.story_key,
+    name: r.story_name,
+    assignee: r.assignee || "Unassigned",
+    status: r.status,
+    label: r.labels || null,
+    days: r.days_in_progress,
+    flag: r.flag || "",
+    jiraUrl: r.jira_link || (JIRA_BASE + r.story_key),
+  }));
+
+  const lastUpdated = rows.reduce((max, r) => {
+    const t = r.last_updated ? new Date(r.last_updated) : null;
+    return t && (!max || t > max) ? t : max;
+  }, null);
+  document.getElementById("lastSynced").textContent = "Data as of " + (lastUpdated ? fmtDate(lastUpdated) : "unknown");
+  document.getElementById("ticketCount").textContent = TICKETS.length + " tickets";
+
+  renderDashboard();
+  renderLog("all");
+  renderDesignerCards();
+}
+
+function renderDashboard() {
+  const active = TICKETS.filter((t) => t.status !== "Done");
+  const done = TICKETS.filter((t) => t.status === "Done");
+  const stuck = active.filter((t) => (t.flag || "").includes("Mandek"));
+
+  const totalActive = active.length;
+  const totalDone = done.length;
+  const totalStuck = stuck.length;
+  const completionRate = TICKETS.length ? Math.round((totalDone / TICKETS.length) * 100) : 0;
+
+  // load per designer
+  const designerMap = {};
+  active.forEach((t) => { designerMap[t.assignee] = (designerMap[t.assignee] || 0) + 1; });
+  const designerRows = Object.entries(designerMap)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, n]) => `<tr><td>${esc(name)}</td><td class="num">${n}</td></tr>`)
+    .join("") || '<tr class="muted-row"><td colspan="2">No data yet</td></tr>';
+
+  // fokus per clan
+  const clanMap = {};
+  active.forEach((t) => {
+    const key = t.label || "no-clan";
+    clanMap[key] = (clanMap[key] || 0) + 1;
+  });
+  const clanEntries = Object.entries(clanMap)
+    .map(([slug, n]) => [slug === "no-clan" ? "No clan label" : (CLAN_NAMES[slug] || slug), n])
+    .sort((a, b) => b[1] - a[1]);
+  const clanRows = clanEntries
+    .map(([name, n]) => `<tr${n === 0 ? ' class="muted-row"' : ""}><td>${esc(name)}</td><td class="num">${n}</td></tr>`)
+    .join("");
+
+  // ticket mandek (top 5 terlama)
+  const staleSorted = [...stuck].sort((a, b) => (b.days ?? 0) - (a.days ?? 0)).slice(0, 5);
+  const staleRows = staleSorted.length
+    ? staleSorted.map((t) =>
+        `<tr><td><a class="ticket-key jira-link" href="${esc(t.jiraUrl)}" target="_blank" rel="noopener">${esc(t.key)}</a></td>` +
+        `<td>${esc(t.assignee)}</td><td class="num">${t.days != null ? t.days + "d" : "—"}</td></tr>`
+      ).join("")
+    : '<tr class="muted-row"><td colspan="3">No stale tickets</td></tr>';
+
+  // statistik tambahan
+  const daysList = active.map((t) => t.days).filter((x) => typeof x === "number");
+  const avgDays = daysList.length ? (daysList.reduce((a, b) => a + b, 0) / daysList.length).toFixed(1) : "0.0";
+  const labeled = TICKETS.filter((t) => t.label).length;
+  const labelPct = TICKETS.length ? ((labeled / TICKETS.length) * 100).toFixed(1) : "0.0";
+
+  const statusCounts = {
+    "To Do": active.filter((t) => t.status === "To Do").length,
+    "In Progress": active.filter((t) => t.status === "In Progress").length,
+    "User Testing": active.filter((t) => t.status === "User Testing").length,
+    "Done": totalDone,
+  };
+
+  document.getElementById("dashboardBody").innerHTML = `
+    <div class="kpi-row">
+      <div class="kpi-card" style="--accent: var(--status-progress)"><p class="kpi-label">Total active</p><p class="kpi-value">${totalActive}</p></div>
+      <div class="kpi-card" style="--accent: var(--status-done)"><p class="kpi-label">Done this week</p><p class="kpi-value">${totalDone}</p></div>
+      <div class="kpi-card" style="--accent: var(--status-stale)"><p class="kpi-label">Stale tickets</p><p class="kpi-value">${totalStuck}</p></div>
+      <div class="kpi-card" style="--accent: var(--status-todo)"><p class="kpi-label">Completion rate</p><p class="kpi-value">${completionRate}%</p></div>
+    </div>
+    <div class="tri-row">
+      <div class="panel"><div class="panel-title">Load per designer</div><table><tr><th>Designer</th><th class="num">Total</th></tr>${designerRows}</table></div>
+      <div class="panel"><div class="panel-title">Focus per clan</div><table><tr><th>Clan</th><th class="num">Total</th></tr>${clanRows}</table></div>
+      <div class="panel stale-panel"><div class="panel-title danger">Stale tickets (&gt;30 days)</div><table><tr><th>Key</th><th>Assignee</th><th class="num" title="Days since the ticket was created">Days Active</th></tr>${staleRows}</table></div>
+    </div>
+    <div class="chart-row">
+      <div class="chart-card"><div class="panel-title" style="padding:0 0 12px; border:none;">Status distribution</div><canvas id="statusChart"></canvas></div>
+      <div class="chart-card"><div class="panel-title" style="padding:0 0 12px; border:none;">Tickets per clan</div><canvas id="clanChart"></canvas></div>
+    </div>
+    <div class="stat-row">
+      <div class="kpi-card" style="--accent: var(--status-testing)"><p class="kpi-label">Avg age of active tickets</p><p class="kpi-value" style="font-size:19px">${avgDays} days</p></div>
+      <div class="kpi-card" style="--accent: var(--status-done)"><p class="kpi-label">Tickets with a clan label</p><p class="kpi-value" style="font-size:19px">${labelPct}%</p></div>
+    </div>
+  `;
+
+  const rootStyles = getComputedStyle(document.documentElement);
+  const c = (name) => rootStyles.getPropertyValue(name).trim();
+
+  try {
+    new Chart(document.getElementById("statusChart"), {
+      type: "doughnut",
+      data: {
+        labels: Object.keys(statusCounts),
+        datasets: [{ data: Object.values(statusCounts), backgroundColor: [c("--status-todo"), c("--status-progress"), c("--status-testing"), c("--status-done")], borderWidth: 0 }],
+      },
+      options: { cutout: "62%", plugins: { legend: { position: "bottom", labels: { boxWidth: 8, font: { size: 11, family: "Inter" }, color: c("--text-secondary") } } } },
+    });
+
+    new Chart(document.getElementById("clanChart"), {
+      type: "bar",
+      data: { labels: clanEntries.map((e) => e[0]), datasets: [{ data: clanEntries.map((e) => e[1]), backgroundColor: c("--status-progress"), borderRadius: 4, maxBarThickness: 22 }] },
+      options: {
+        indexAxis: "y",
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: c("--border") }, ticks: { color: c("--text-secondary"), font: { size: 11 } } },
+          y: { grid: { display: false }, ticks: { color: c("--text-secondary"), font: { size: 11.5 } } },
+        },
+      },
+    });
+  } catch (chartErr) {
+    console.error("Chart rendering failed:", chartErr);
+    const chartRow = document.querySelector(".chart-row");
+    if (chartRow) {
+      chartRow.innerHTML = `<div class="state-msg error" style="grid-column: 1 / -1;">Charts failed to load (${esc(chartErr.message)}). The rest of the dashboard is unaffected.</div>`;
+    }
+  }
+}
+
+let selectedDesigner = null;
+
+function renderDesignerCards() {
+  const stats = {};
+  TICKETS.forEach((t) => {
+    const name = t.assignee;
+    if (!stats[name]) stats[name] = { active: 0, done: 0, stale: 0 };
+    if (t.status === "Done") stats[name].done++;
+    else {
+      stats[name].active++;
+      if ((t.flag || "").includes("Mandek")) stats[name].stale++;
+    }
+  });
+
+  const names = Object.keys(stats).sort((a, b) => stats[b].active - stats[a].active);
+  if (!selectedDesigner || !stats[selectedDesigner]) selectedDesigner = names[0] || null;
+
+  const container = document.getElementById("designerCards");
+  container.innerHTML = names.map((name) => `
+    <button class="designer-card ${name === selectedDesigner ? "selected" : ""}" data-designer="${esc(name)}" type="button">
+      <p class="d-name">${esc(name)}</p>
+      <div class="d-stats">
+        <div><p class="d-stat-num">${stats[name].active}</p><p class="d-stat-label">Active</p></div>
+        <div><p class="d-stat-num">${stats[name].done}</p><p class="d-stat-label">Done</p></div>
+        <div><p class="d-stat-num stale">${stats[name].stale}</p><p class="d-stat-label">Stale</p></div>
+      </div>
+    </button>
+  `).join("") || '<div class="state-msg">No assignee data yet</div>';
+
+  container.querySelectorAll(".designer-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      selectedDesigner = card.dataset.designer;
+      renderDesignerCards();
+    });
+  });
+
+  renderDesignerDetail();
+}
+
+function renderDesignerDetail() {
+  const el = document.getElementById("designerDetail");
+  if (!selectedDesigner) { el.innerHTML = ""; return; }
+  const rows = TICKETS.filter((t) => t.assignee === selectedDesigner).sort((a, b) => (b.days ?? 0) - (a.days ?? 0));
+  el.innerHTML = `
+    <div class="panel">
+      <div class="panel-title">${esc(selectedDesigner)}'s tickets</div>
+      <table>
+        <tr><th>Key</th><th>Name</th><th>Status</th><th>Label</th><th class="num" title="Days since the ticket was created">Days Active</th><th>Flag</th></tr>
+        ${rows.map((t) => `
+          <tr>
+            <td><a class="ticket-key jira-link" href="${esc(t.jiraUrl)}" target="_blank" rel="noopener">${esc(t.key)}</a></td>
+            <td><a class="jira-link" href="${esc(t.jiraUrl)}" target="_blank" rel="noopener">${esc(t.name)}</a></td>
+            <td><span class="pill ${pillClass(t.status)}">${esc(t.status)}</span></td>
+            <td>${t.label ? `<span class="label-tag">${esc(t.label)}</span>` : "—"}</td>
+            <td class="num">${t.days != null ? t.days + "d" : "—"}</td>
+            <td class="flag-cell ${(t.flag || "").includes("Mandek") ? "flag-stale" : ""}">${esc(t.flag)}</td>
+          </tr>
+        `).join("") || '<tr class="muted-row"><td colspan="6">No tickets</td></tr>'}
+      </table>
+    </div>
+  `;
+}
+
+function pillClass(status) {
+  if (status === "To Do") return "todo";
+  if (status === "In Progress") return "progress";
+  if (status === "User Testing") return "testing";
+  return "done";
+}
+
+function renderLog(filter) {
+  const tbody = document.getElementById("logTableBody");
+  tbody.innerHTML = "";
+  const rows = filter === "all" ? TICKETS : TICKETS.filter((t) => t.status === filter);
+  rows.forEach((t) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><a class="ticket-key jira-link" href="${esc(t.jiraUrl)}" target="_blank" rel="noopener">${esc(t.key)}</a></td>
+      <td><a class="jira-link" href="${esc(t.jiraUrl)}" target="_blank" rel="noopener">${esc(t.name)}</a></td>
+      <td>${esc(t.assignee)}</td>
+      <td><span class="pill ${pillClass(t.status)}">${esc(t.status)}</span></td>
+      <td>${t.label ? `<span class="label-tag">${esc(t.label)}</span>` : "—"}</td>
+      <td class="num">${t.days != null ? t.days + "d" : "—"}</td>
+      <td class="flag-cell ${(t.flag || "").includes("Mandek") ? "flag-stale" : ""}">${esc(t.flag)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById("filterBar").addEventListener("click", (e) => {
+  const btn = e.target.closest(".filter-chip");
+  if (!btn) return;
+  document.querySelectorAll(".filter-chip").forEach((c) => c.classList.remove("active"));
+  btn.classList.add("active");
+  renderLog(btn.dataset.filter);
+});
+
+document.querySelectorAll(".nav-item[data-view]").forEach((item) => {
+  item.addEventListener("click", () => {
+    document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
+    item.classList.add("active");
+    document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
+    document.getElementById("view-" + item.dataset.view).classList.add("active");
+  });
+});
+
+function showLoadError(err) {
+  document.getElementById("dashboardBody").innerHTML = `
+    <div class="state-msg error">
+      Failed to load data: ${esc(err.message)}<br>
+      Check your internet connection, or whether the "tickets" table still exists.<br>
+      <button id="retryBtn" class="retry-btn" type="button">Retry</button>
+    </div>`;
+  document.getElementById("lastSynced").textContent = "Failed to load";
+  document.getElementById("retryBtn").addEventListener("click", startLoad);
+}
+
+function startLoad() {
+  document.getElementById("dashboardBody").innerHTML = '<div class="state-msg" id="loadingMsg">Fetching data from Supabase…</div>';
+  document.getElementById("lastSynced").textContent = "Loading…";
+  loadData().catch(showLoadError);
+}
+
+startLoad();
+</script>
+
+</body>
+</html>
